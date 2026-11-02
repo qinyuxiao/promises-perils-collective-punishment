@@ -1,0 +1,38 @@
+﻿variable_name,value_space,explanation
+id,,Subject ID. Generated in s1_cleaning.R
+condition,"baseline, norm, cp",Experimental condition
+compre_1,"TRUE, FALSE",Comprehension question
+compre_2,"TRUE, FALSE",Comprehension question
+compre_3F,"TRUE, FALSE",Comprehension question. Presented in conditions where the correct answer for this questions is FALSE.
+compre_3T,"TRUE, FALSE",Comprehension question. Presented in conditions where the correct answer for this questions is TRUE.
+compre_4,"TRUE, FALSE",Comprehension question
+match,"0, 1",1 = reported a match; 0 = did not report a match
+ee,0–100,empirical expectation
+pn,1–6,personal normative belief
+ne,1–6,normative expectation
+cee_1,0–100,"conditional empirical expectation, peer match-report proportion 0%–10%"
+cee_2,0–100,"conditional empirical expectation, peer match-report proportion 10%–20%"
+cee_3,0–100,"conditional empirical expectation, peer match-report proportion 20%–30%"
+cee_4,0–100,"conditional empirical expectation, peer match-report proportion 30%–40%"
+cee_5,0–100,"conditional empirical expectation, peer match-report proportion 40%–50%"
+cpn_1,1–6,"conditional personal normative belief, peer match-report proportion 0%–10%"
+cpn_2,1–6,"conditional personal normative belief, peer match-report proportion 10%–20%"
+cpn_3,1–6,"conditional personal normative belief, peer match-report proportion 20%–30%"
+cpn_4,1–6,"conditional personal normative belief, peer match-report proportion 30%–40%"
+cpn_5,1–6,"conditional personal normative belief, peer match-report proportion 40%–50%"
+cne_1,1–6,"conditional normative expectation, peer match-report proportion 0%–10%"
+cne_2,1–6,"conditional normative expectation, peer match-report proportion 10%–20%"
+cne_3,1–6,"conditional normative expectation, peer match-report proportion 20%–30%"
+cne_4,1–6,"conditional normative expectation, peer match-report proportion 30%–40%"
+cne_5,1–6,"conditional normative expectation, peer match-report proportion 40%–50%"
+d_n,1–5,"D16 items, see 'D16.xlsx'"
+d_score,1–5,"D-score, the average of responses to D items (after reverse-scoring some), higher means overall more aversive personality"
+d_attention,"Pass, Fail",attention check
+age,,
+gender,"Male, Female, Non-binary, Prefer not to say",
+place_of_birth,,
+place_of_residence,,
+attentive,1–5,"How attentive are you during the survey? 1 = not at all, 5 = very"
+error,,Did you spot any error in the survey?
+which_bonus,,Which bonus was selected to be paid out?
+bonus,,The amount of bonus

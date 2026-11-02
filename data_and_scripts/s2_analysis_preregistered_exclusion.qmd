@@ -1,0 +1,741 @@
+---
+title: "Analysis: Registered replication"
+subtitle: "Based on preregistered exclusion criteria"
+author: "Qinyu Xiao"
+date: today
+date-format: "D MMMM YYYY"
+format:
+  html:
+    theme: cosmo
+    embed-resources: true
+    code-tools: true
+    code-fold: show
+    toc: true
+    toc-title: "Table of contents"
+    html-table-processing: none
+    grid:
+      body-width: 900px
+---
+
+```{css echo = FALSE}
+caption {
+  caption-side: top;
+  font-size: 1.1em;
+}
+```
+
+```{r global-options}
+#| include: false
+options(
+  width = 200,
+  knitr.table.format = "html"
+)
+```
+
+# Preparation
+
+## Load packages
+
+```{r load-packages}
+#| error: false
+#| warning: false
+#| message: false
+#| output: false
+if (!requireNamespace("pacman", quietly = TRUE)) install.packages("pacman")
+pacman::p_load(
+  tidyverse,
+  janitor,
+  MPTinR,
+  afex,
+  emmeans,
+  RRreg,
+  ggsignif,
+  ggdist,
+  ggtext,
+  knitr,
+  kableExtra
+)
+```
+
+## Import data
+
+```{r import-data}
+#| output: false
+#| warning: false
+#| message: false
+dat.cleaned <- read_csv("processed_data/s2_data_cleaned.csv")
+```
+
+```{r apply-exclusion}
+dat <- dat.cleaned |>
+  filter(
+    completed == 1,
+    fail_honeypot == 0,
+    with_multiple_response == 0
+  )
+```
+
+```{r data-type}
+dat <- dat |>
+  mutate(
+    across(c(id, condition, gender, actual_match), as.factor),
+    across(c(ee, pn, ne), as.numeric)
+  )
+```
+
+# Preregistered analysis
+
+## Sample demographics
+
+::: {.panel-tabset}
+
+### Age
+
+```{r demographics-age}
+sum(is.na(dat$age)) # The number of participants who did not answer
+range(dat$age, na.rm = TRUE)
+dat |>
+  filter(!is.na(age)) |>
+  summarise(m = mean(age), sd = sd(age)) |>
+  kable(digits = 2) |>
+  kable_minimal(full_width = FALSE)
+```
+
+### Gender
+
+```{r demographics-gender}
+#| message: false
+#| warning: false
+sum(is.na(dat$gender)) # The number of participants who did not answer
+jmv::descriptives(dat, vars = "gender", freq = TRUE)$frequencies
+```
+
+:::
+
+## Mind Game behaviors
+
+### Descriptives
+
+```{r mind-game-descriptives}
+#| message: false
+#| warning: false
+dat |>
+  filter(!is.na(match)) |>
+  tabyl(condition, match) |>
+  adorn_totals(where = c("row", "col")) |>
+  adorn_percentages(denominator = "row") |>
+  adorn_pct_formatting() |>
+  adorn_ns(position = "front") |>
+  kable(align = "r") |>
+  kable_minimal(full_width = FALSE)
+
+# Count data
+mg_counts <- dat |>
+  mutate(
+    condition = factor(condition, levels = c("baseline", "cp", "norm")),
+    match = factor(match, levels = c(1, 0))
+  ) |>
+  count(condition, match, .drop = FALSE)
+
+get_mg_counts <- function(condition_name) {
+  mg_counts |>
+    filter(condition == condition_name) |>
+    pull(n)
+}
+```
+
+### Dishonesty by condition
+
+We examine whether there is evidence of dishonesty in each condition.
+
+::: {.panel-tabset}
+
+#### Baseline
+
+```{r baseline-dishonesty}
+#| message: false
+#| warning: false
+DescTools::GTest(
+  x = get_mg_counts("baseline"),
+  p = c(0.2, 0.8),
+  correct = "none"
+)
+
+effectsize::cohens_w(
+  x = get_mg_counts("baseline"),
+  p = c(0.2, 0.8),
+  alternative = "two.sided"
+)
+```
+
+#### CP
+
+```{r cp-dishonesty}
+#| message: false
+#| warning: false
+DescTools::GTest(
+  x = get_mg_counts("cp"),
+  p = c(0.2, 0.8),
+  correct = "none"
+)
+
+effectsize::cohens_w(
+  x = get_mg_counts("cp"),
+  p = c(0.2, 0.8),
+  alternative = "two.sided"
+)
+```
+
+#### Norm
+
+```{r norm-dishonesty}
+#| message: false
+#| warning: false
+DescTools::GTest(
+  x = get_mg_counts("norm"),
+  p = c(0.2, 0.8),
+  correct = "none"
+)
+
+effectsize::cohens_w(
+  x = get_mg_counts("norm"),
+  p = c(0.2, 0.8),
+  alternative = "two.sided"
+)
+```
+
+:::
+
+### Multinomial processing tree models
+
+#### Model specification
+
+```{r mpt-model-specification}
+mpt_model <- "
+# Baseline tree
+d1+(1-d1)*p
+(1-d1)*(1-p)
+# CP tree
+d2+(1-d2)*p
+(1-d2)*(1-p)
+# Norm tree
+d3+(1-d3)*p
+(1-d3)*(1-p)
+"
+```
+
+#### Saturated model
+
+```{r mpt-saturated}
+#| warning: false
+#| message: false
+mg_data <- mg_counts |> pull(n)
+
+mpt_saturated <- fit.model(
+  data = mg_data,
+  model.filename = textConnection(mpt_model),
+  list("p = 0.2"),
+  output = "full",
+  show.messages = FALSE
+)
+
+mpt_saturated$parameters |>
+  kable(digits = 4, align = "r") |>
+  kable_minimal(full_width = FALSE)
+```
+
+#### Omnibus test
+
+```{r mpt-omnibus-test}
+mpt_omnibus <- fit.mpt(
+  data = mg_data,
+  model.filename = textConnection(mpt_model),
+  list("p = 0.2", "d1 = d2 = d3"),
+  output = "full",
+  show.messages = FALSE
+)
+
+mpt_omnibus$goodness.of.fit |>
+  kable() |>
+  kable_minimal(full_width = FALSE)
+```
+
+#### Condition comparison
+
+::: {.panel-tabset}
+
+##### Baseline vs. CP
+
+```{r mpt-baseline-vs-cp}
+mpt_baseline_vs_cp <- fit.mpt(
+  data = mg_data,
+  model.filename = textConnection(mpt_model),
+  list("p = 0.2", "d1 = d2"),
+  output = "full",
+  show.messages = FALSE
+)
+
+mpt_baseline_vs_cp$goodness.of.fit |>
+  kable() |>
+  kable_minimal(full_width = FALSE)
+
+# Effect size
+dat_baseline_vs_cp <- dat |>
+  filter(condition != "norm") |>
+  mutate(condition = droplevels(condition))
+effectsize::cohens_w(
+  x = table(dat_baseline_vs_cp$match, dat_baseline_vs_cp$condition),
+  alternative = "two.sided"
+)
+```
+
+##### Baseline vs. Norm
+
+```{r mpt-baseline-vs-norm}
+mpt_baseline_vs_norm <- fit.mpt(
+  data = mg_data,
+  model.filename = textConnection(mpt_model),
+  list("p = 0.2", "d1 = d3"),
+  output = "full",
+  show.messages = FALSE
+)
+
+mpt_baseline_vs_norm$goodness.of.fit |>
+  kable() |>
+  kable_minimal(full_width = FALSE)
+
+# Effect size
+dat_baseline_vs_norm <- dat |>
+  filter(condition != "cp") |>
+  mutate(condition = droplevels(condition))
+effectsize::cohens_w(
+  x = table(dat_baseline_vs_norm$match, dat_baseline_vs_norm$condition),
+  alternative = "two.sided"
+)
+```
+
+##### CP vs. Norm
+
+```{r mpt-cp-vs-norm}
+mpt_cp_vs_norm <- fit.mpt(
+  data = mg_data,
+  model.filename = textConnection(mpt_model),
+  list("p = 0.2", "d2 = d3"),
+  output = "full",
+  show.messages = FALSE
+)
+
+mpt_cp_vs_norm$goodness.of.fit |>
+  kable() |>
+  kable_minimal(full_width = FALSE)
+
+# Effect size
+dat_cp_vs_norm <- dat |>
+  filter(condition != "baseline") |>
+  mutate(condition = droplevels(condition))
+effectsize::cohens_w(
+  x = table(dat_cp_vs_norm$match, dat_cp_vs_norm$condition),
+  alternative = "two.sided"
+)
+```
+
+:::
+
+## Norms
+
+### Descriptives
+
+```{r norm-descriptives}
+jmv::descriptives(data = dat, vars = vars(ee, pn, ne), splitBy = "condition")
+```
+
+```{r norm-descriptives-personal-normative-belief-frequency}
+dat |>
+  tabyl(pn, condition) |>
+  adorn_totals(where = c("row")) |>
+  adorn_percentages(denominator = "col") |>
+  adorn_pct_formatting() |>
+  adorn_ns(position = "front") |>
+  kable(align = "r", caption = "Personal normative beliefs (count)") |>
+  kable_minimal(full_width = FALSE) |>
+  footnote(general = "1 = very inappropriate, 6 = very appropriate")
+```
+
+```{r norm-descriptives-normative-expectation-frequency}
+dat |>
+  tabyl(ne, condition) |>
+  adorn_totals(where = c("row")) |>
+  adorn_percentages(denominator = "col") |>
+  adorn_pct_formatting() |>
+  adorn_ns(position = "front") |>
+  kable(align = "r", caption = "Normative expectations (count)") |>
+  kable_minimal(full_width = FALSE) |>
+  footnote(general = "1 = very socially inappropriate, 6 = very socially appropriate")
+```
+
+```{r norm-descriptives-different-norms}
+dat |>
+  summarise(perc = mean(pn != ne)) |>
+  pull(perc)
+```
+
+::: {.panel-tabset}
+
+### Empirical expectations
+
+```{r anova-empirical-expectations}
+#| message: false
+mod_anova_ee <- aov_car(ee ~ condition + Error(id), data = dat)
+nice(mod_anova_ee, es = "pes")
+effectsize::eta_squared(mod_anova_ee, ci = .90, alternative = "two.sided")
+
+emm_anova_ee <- emmeans(mod_anova_ee, ~ condition)
+emm_anova_ee |>
+  kable(digits = 2) |>
+  kable_minimal(full_width = FALSE)
+pairs(emm_anova_ee, adjust = "none")
+
+# Cohen's d: CP - Norm (not model-based effect size)
+effectsize::cohens_d(ee ~ condition, data = dat[dat$condition != "baseline", ])
+# Cohen's d: Baseline - Norm (not model-based effect size)
+effectsize::cohens_d(ee ~ condition, data = dat[dat$condition != "cp", ])
+# Cohen's d: Baseline - CP (not model-based effect size)
+effectsize::cohens_d(ee ~ condition, data = dat[dat$condition != "norm", ])
+```
+
+### Personal normative beliefs
+
+```{r anova-personal-normative-beliefs}
+#| message: false
+mod_anova_pn <- aov_car(pn ~ condition + Error(id), data = dat)
+nice(mod_anova_pn, es = "pes")
+effectsize::eta_squared(mod_anova_pn, ci = .90, alternative = "two.sided")
+
+emm_anova_pn <- emmeans(mod_anova_pn, ~ condition)
+emm_anova_pn |> kable(digits = 2) |> kable_styling(full_width = FALSE)
+pairs(emm_anova_pn, adjust = "none")
+
+# Cohen's d: CP - Norm (not model-based effect size)
+effectsize::cohens_d(pn ~ condition, data = dat[dat$condition != "baseline", ])
+# Cohen's d: Baseline - Norm (not model-based effect size)
+effectsize::cohens_d(pn ~ condition, data = dat[dat$condition != "cp", ])
+# Cohen's d: Baseline - CP (not model-based effect size)
+effectsize::cohens_d(pn ~ condition, data = dat[dat$condition != "norm", ])
+```
+
+We also conduct a Kruskal--Wallis test, as it may be more appropriate to treat personal normative belief as an ordinal variable given how it was measured.
+
+```{r kruskal-wallis-personal-normative-beliefs}
+kruskal.test(pn ~ condition, data = dat)
+dunn.test::dunn.test(
+  x = dat$pn,
+  g = dat$condition,
+  method = "bonferroni",
+  altp = TRUE
+)
+```
+
+### Normative expectations
+
+```{r anova-normative-expectations}
+#| message: false
+mod_anova_ne <- aov_car(ne ~ condition + Error(id), data = dat)
+nice(mod_anova_ne, es = "pes")
+effectsize::eta_squared(mod_anova_ne, ci = .90, alternative = "two.sided")
+
+emm_anova_ne <- emmeans(mod_anova_ne, ~ condition)
+emm_anova_ne |>
+  kable(digits = 2) |>
+  kable_minimal(full_width = FALSE)
+pairs(emm_anova_ne, adjust = "none")
+
+# Cohen's d: CP - Norm (not model-based effect size)
+effectsize::cohens_d(ne ~ condition, data = dat[dat$condition != "baseline", ])
+# Cohen's d: Baseline - Norm (not model-based effect size)
+effectsize::cohens_d(ne ~ condition, data = dat[dat$condition != "cp", ])
+# Cohen's d: Baseline - CP (not model-based effect size)
+effectsize::cohens_d(ne ~ condition, data = dat[dat$condition != "norm", ])
+```
+
+We also conduct a Kruskal--Wallis test, as it may be more appropriate to treat normative expectation as an ordinal variable given how it was measured.
+
+```{r kruskal-wallis-normative-expectations}
+kruskal.test(ne ~ condition, data = dat)
+dunn.test::dunn.test(
+  x = dat$ne,
+  g = dat$condition,
+  method = "bonferroni",
+  altp = TRUE
+)
+```
+
+:::
+
+## Predicting dishonesty
+
+```{r logistic-regression-data}
+dat_reg <- dat |>
+  select(match, condition, ee, pn, ne) |>
+  mutate(
+    match = as.numeric(match),
+    condition = relevel(condition, ref = "baseline"),
+    ee_z = as.vector(scale(ee)),
+    pn_z = as.vector(scale(pn)),
+    ne_z = as.vector(scale(ne))
+  )
+```
+
+::: {.panel-tabset}
+
+### Model 1
+
+```{r logistic-regression-model-1}
+mod_1 <- RRreg::RRlog(
+  match ~ condition,
+  data = dat_reg,
+  model = "FR",
+  p = c(0, 0.2)
+)
+summary(mod_1)
+```
+
+### Model 2
+
+```{r logistic-regression-model-2}
+mod_2 <- RRreg::RRlog(
+  match ~ condition + ee_z,
+  data = dat_reg,
+  model = "FR",
+  p = c(0, 0.2)
+)
+summary(mod_2)
+```
+
+### Model 3
+
+```{r logistic-regression-model-3}
+mod_3 <- RRreg::RRlog(
+  match ~ condition + pn_z,
+  data = dat_reg,
+  model = "FR",
+  p = c(0, 0.2)
+)
+summary(mod_3)
+```
+
+### Model 4
+
+```{r logistic-regression-model-4}
+mod_4 <- RRreg::RRlog(
+  match ~ condition + ne_z,
+  data = dat_reg,
+  model = "FR",
+  p = c(0, 0.2)
+)
+summary(mod_4)
+```
+
+### Model 5
+
+```{r logistic-regression-model-5}
+mod_5 <- RRreg::RRlog(
+  match ~ condition + ee_z + pn_z + ne_z,
+  data = dat_reg,
+  model = "FR",
+  p = c(0, 0.2)
+)
+summary(mod_5)
+```
+
+### Model 6
+
+```{r logistic-regression-model-6}
+mod_6 <- RRreg::RRlog(
+  match ~ condition * ee_z,
+  data = dat_reg,
+  model = "FR",
+  p = c(0, 0.2)
+)
+summary(mod_6)
+```
+
+```{r logistic-regression-model-6-condition-specific-coefficient}
+mod_6_coefficients <- RRreg::RRlog(
+  match ~ 0 + condition + condition:ee_z,
+  data = dat_reg,
+  model = "FR",
+  p = c(0, 0.2)
+)
+summary(mod_6_coefficients)
+```
+
+### Model 7
+
+```{r logistic-regression-model-7}
+mod_7 <- RRreg::RRlog(
+  match ~ condition * pn_z,
+  data = dat_reg,
+  model = "FR",
+  p = c(0, 0.2)
+)
+summary(mod_7)
+```
+
+```{r logistic-regression-model-7-condition-specific-coefficient}
+mod_7_coefficients <- RRreg::RRlog(
+  match ~ 0 + condition + condition:pn_z,
+  data = dat_reg,
+  model = "FR",
+  p = c(0, 0.2)
+)
+summary(mod_7_coefficients)
+```
+
+### Model 8
+
+```{r logistic-regression-model-8}
+mod_8 <- RRreg::RRlog(
+  match ~ condition * ne_z,
+  data = dat_reg,
+  model = "FR",
+  p = c(0, 0.2)
+)
+summary(mod_8)
+```
+
+```{r logistic-regression-model-8-condition-specific-coefficient}
+mod_8_coefficients <- RRreg::RRlog(
+  match ~ 0 + condition + condition:ne_z,
+  data = dat_reg,
+  model = "FR",
+  p = c(0, 0.2)
+)
+summary(mod_8_coefficients)
+```
+
+### Model 9
+
+```{r logistic-regression-model-9}
+mod_9 <- RRreg::RRlog(
+  match ~ condition * ee_z + condition * pn_z + condition * ne_z,
+  data = dat_reg,
+  model = "FR",
+  p = c(0, 0.2)
+)
+summary(mod_9)
+```
+
+:::
+
+# Exploratory analysis
+
+## Compare dishonesty between pilot and replication
+
+### Multinomial processing tree models
+
+```{r explore-mpt-model-specification}
+#| message: false
+#| warning: false
+mpt_model_two_tree <- "
+# Pilot tree
+d1+(1-d1)*p
+(1-d1)*(1-p)
+# Replication tree
+d2+(1-d2)*p
+(1-d2)*(1-p)
+"
+
+s2_mg_counts <- mg_counts |> mutate(study = "replication")
+s1_mg_counts <- read_csv("processed_data/s1_data_cleaned.csv") |>
+  mutate(across(c(id, completed, condition, d_attention, gender), as.factor)) |>
+  filter(d_attention == "Pass", completed == 1) |>
+  select(id, condition, match) |>
+  mutate(
+    condition = factor(condition, levels = c("baseline", "cp", "norm")),
+    match = factor(match, levels = c(1, 0))
+  ) |>
+  count(condition, match, .drop = FALSE) |>
+  mutate(study = "pilot")
+both_mg_counts <- rbind(s1_mg_counts, s2_mg_counts)
+```
+
+::: {.panel-tabset}
+
+#### Baseline
+
+```{r mpt-pilot-vs-replication-baseline}
+mpt_pilot_vs_replication_baseline <- fit.model(
+  data = both_mg_counts |>
+    filter(condition == "baseline") |>
+    pull(n),
+  model.filename = textConnection(mpt_model_two_tree),
+  list("p = 0.2", "d1 = d2"),
+  output = "full",
+  show.messages = FALSE
+)
+mpt_pilot_vs_replication_baseline$goodness.of.fit
+```
+
+#### CP
+
+```{r mpt-pilot-vs-replication-cp}
+mpt_pilot_vs_replication_cp <- fit.model(
+  data = both_mg_counts |>
+    filter(condition == "cp") |>
+    pull(n),
+  model.filename = textConnection(mpt_model_two_tree),
+  list("p = 0.2", "d1 = d2"),
+  output = "full",
+  show.messages = FALSE
+)
+mpt_pilot_vs_replication_cp$goodness.of.fit
+```
+
+#### Norm
+
+```{r mpt-pilot-vs-replication-norm}
+mpt_pilot_vs_replication_norm <- fit.model(
+  data = both_mg_counts |>
+    filter(condition == "norm") |>
+    pull(n),
+  model.filename = textConnection(mpt_model_two_tree),
+  list("p = 0.2", "d1 = d2"),
+  output = "full",
+  show.messages = FALSE
+)
+mpt_pilot_vs_replication_norm$goodness.of.fit
+```
+
+:::
+
+## Compare the CP--Norm difference across studies
+
+```{r compare-cp-norm-difference-across-studies}
+#| message: false
+#| warning: false
+dat_s1 <- read_csv("processed_data/s1_data_cleaned.csv") |>
+  mutate(across(c(id, completed, condition, d_attention, gender), as.factor)) |>
+  filter(d_attention == "Pass", completed == 1) |>
+  select(id, condition, match, ee, pn, ne) |>
+  mutate(study = "pilot")
+
+dat_s2 <- dat |>
+  select(id, condition, match, ee, pn, ne) |>
+  mutate(study = "replication")
+
+dat_compare <- rbind(dat_s1, dat_s2) |>
+  mutate(study = as.factor(study)) |>
+  filter(condition != "baseline") |>
+  mutate(condition = relevel(droplevels(condition), ref = "norm"))
+
+contrasts(dat_compare$condition) <- datawizard::contr.deviation
+contrasts(dat_compare$study) <- datawizard::contr.deviation
+
+mod_pilot_vs_rep <- RRreg::RRlog(
+  match ~ condition * study,
+  data = dat_compare,
+  model = "FR",
+  p = c(0, 0.2)
+)
+summary(mod_pilot_vs_rep)
+```

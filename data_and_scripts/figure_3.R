@@ -1,0 +1,198 @@
+library(ggtext)
+
+# ---- Mind Game behaviors (Panel A) ----
+
+conditions <- c("Baseline", "CP", "Norm")
+d_ests <- c(0.4679, 0.3383, 0.3173)
+lowers <- c(0.4311, 0.3010, 0.2803)
+uppers <- c(0.5047, 0.3756, 0.3544)
+ds <- data.frame(conditions, d_ests, lowers, uppers)
+
+panel_a <- ds |>
+  ggplot(aes(x = conditions, y = d_ests)) +
+  geom_pointrange(ymin = lowers, ymax = uppers) +
+  geom_signif(
+    comparisons = list(c(1, 2), c(1, 3), c(2, 3)),
+    annotations = c("***", "***", "n.s."),
+    y_position = c(0.53, 0.57, 0.4)
+  ) +
+  scale_y_continuous(
+    breaks = round(seq(0, 0.8, 0.1), 1),
+    limits = c(0.2, 0.6),
+    expand = c(0, 0)
+  ) +
+  labs(
+    x = "",
+    y = "",
+    title = "Mind Game Behaviors",
+    subtitle = expression("estimated proportion of dishonest individuals ("*italic("d")*")")
+  ) +
+  theme_minimal(base_size = 16) +
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.line.y = element_line(),
+    axis.ticks.y = element_line(),
+    axis.ticks.length = unit(8, units = "pt"),
+    axis.text.x = element_text(size = 14),
+    plot.title = element_text(hjust = 0.5, size = 14),
+    plot.subtitle = element_text(hjust = 0.5, size = 10)
+  )
+
+# ---- Computing summary statistics for norm measures ----
+
+dat_summ <- dat |>
+  mutate(
+    condition = factor(
+      condition,
+      levels = c("baseline", "cp", "norm"),
+      labels = c("Baseline", "CP", "Norm")
+    )
+  ) |>
+  group_by(condition) |>
+  summarise(
+    n = n(),
+    ee.mean = mean(ee),
+    ee.sd = sd(ee),
+    ee.se = ee.sd / sqrt(n),
+    ee.cil = ee.mean - qt(.975, df = n - 1) * ee.se,
+    ee.ciu = ee.mean + qt(.975, df = n - 1) * ee.se,
+  )
+
+# ---- Empirical expectations (Panel B) ----
+
+panel_b <- dat |>
+  mutate(
+    condition = factor(
+      condition,
+      levels = c("baseline", "cp", "norm"),
+      labels = c("Baseline", "CP", "Norm")
+    )
+  ) |>
+  ggplot(aes(x = condition, y = ee)) +
+  stat_eye(side = "both", point_interval = NULL, width = 0.5, fill = "#7DB8E8") +
+  geom_pointrange(
+    data = dat_summ,
+    aes(x = condition, y = ee.mean, ymin = ee.cil, ymax = ee.ciu),
+    size = 0.1
+  ) +
+  scale_y_continuous(
+    breaks = seq(0, 100, 10),
+    limits = c(0, 100),
+    expand = c(0, 0)
+  ) +
+  labs(
+    title = "Empirical Expectations", x = "", y = "",
+    subtitle = "number of participants (out of 100) that would lie"
+  ) +
+  theme_minimal(base_size = 16) +
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.line.y = element_line(),
+    axis.ticks.y = element_line(),
+    axis.ticks.length = unit(8, units = "pt"),
+    axis.text.x = element_text(size = 14),
+    plot.title = element_text(hjust = 0.5, size = 14),
+    plot.subtitle = element_text(hjust = 0.5, size = 10)
+  )
+
+# ---- Personal normative beliefs and normative expectations (Panel C) ----
+
+bottom_texts <- c(
+  'Personal Normative Belief' = "personal appropriateness of lying",
+  'Normative Expectation' = "social appropriateness of lying"
+)
+
+lab_fun <- function(x) {
+  paste0(
+    "<span style='font-size:14pt; display:block; text-align:center;'>", x,
+    "</span><br>",
+    "<span style='font-size:0pt; line-height:3pt;'> </span><br>",
+    "<span style='font-size:10pt; display:block; text-align:center;'>",
+    bottom_texts[x],
+    "</span><br>", "<span style='font-size:0pt; line-height:0.5pt;'> </span>"
+  )
+}
+
+panel_c <- dat |>
+  dplyr::select(id, condition, pn, ne) |>
+  mutate(
+    condition = factor(
+      condition,
+      levels = c("baseline", "cp", "norm"),
+      labels = c("Baseline", "CP", "Norm")
+    ),
+    across(
+      c(pn, ne),
+      function(x) factor(
+        x, levels = 6:1,
+        labels = c(
+          "Very (Socially) Appropriate",
+          "(Socially) Appropriate",
+          "Somewhat (Socially) Appropriate",
+          "Somewhat (Socially) Inappropriate",
+          "(Socially) Inappropriate",
+          "Very (Socially) Inappropriate"
+        )
+      )
+    )
+  ) |>
+  pivot_longer(cols = c(pn, ne), names_to = "measure", values_to = "value") |>
+  mutate(
+    measure = factor(
+      measure,
+      levels = c("pn", "ne"),
+      labels = c("Personal Normative Belief", "Normative Expectation")
+    )
+  ) |>
+  ggplot(aes(x = condition, fill = value)) +
+  geom_bar(position = "fill", width = 0.7) +
+  facet_wrap(~ measure, nrow = 1, labeller = labeller(measure = lab_fun)) +
+  scale_y_continuous(
+    breaks = seq(0, 1, 0.1),
+    labels = scales::percent_format(scale = 100),
+    limits = c(0, 1),
+    expand = c(0, 0)
+  ) +
+  scale_fill_manual(values = c(
+    "#E1F3FF", "#B3DAFF", "#7DB8E8", "#4A90D9", "#1F5FBF", "#08306B"
+  )) +
+  labs(x = "", y = "", fill = "") +
+  theme_minimal() +
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.line.y = element_line(),
+    axis.ticks.y = element_line(),
+    axis.ticks.length = unit(8, units = "pt"),
+    axis.text.x = element_text(size = 14),
+    strip.text = ggtext::element_markdown(hjust = 0.5, vjust = 0.5)
+  )
+
+# ---- Combine plots ----
+
+panel_a_b <- cowplot::plot_grid(
+  panel_a, panel_b,
+  nrow = 1,
+  rel_widths = c(1, 1),
+  labels = c("A", "B")
+)
+
+fig <- cowplot::plot_grid(
+  panel_a_b, panel_c,
+  ncol = 1,
+  rel_heights = c(1, 1),
+  labels = c("", "C")
+)
+
+# ---- Output ----
+
+# ggsave(
+#   filename = "output/fig_3.png",
+#   plot = fig,
+#   width = 8,
+#   height = 8,
+#   units = "in",
+#   dpi = "retina"
+# )

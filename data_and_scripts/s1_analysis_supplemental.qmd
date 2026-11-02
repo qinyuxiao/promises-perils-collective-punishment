@@ -1,0 +1,622 @@
+---
+title: "Analysis: Pilot study"
+subtitle: "Results relegated to Supplemental Materials"
+author: "Qinyu Xiao"
+date: today
+date-format: "D MMMM YYYY"
+format:
+  html:
+    theme: cosmo
+    embed-resources: true
+    code-tools: true
+    code-fold: show
+    toc: true
+    toc-title: "Table of contents"
+    html-table-processing: none
+    grid:
+      body-width: 900px
+---
+
+```{r global-options}
+#| include: false
+options(
+  width = 200,
+  knitr.table.format = "html"
+)
+```
+
+# Preparation
+
+## Load packages
+
+```{r load-packages}
+#| error: false
+#| warning: false
+#| message: false
+#| output: false
+if (!requireNamespace("pacman", quietly = TRUE)) install.packages("pacman")
+pacman::p_load(
+  tidyverse,
+  janitor,
+  afex,
+  emmeans,
+  effectsize,
+  MBESS,
+  RRreg,
+  parameters,
+  lme4,
+  lmerTest,
+  marginaleffects,
+  apaTables,
+  knitr,
+  kableExtra
+)
+```
+
+## Import data
+
+```{r import-data}
+#| warning: false
+#| message: false
+#| output: false
+dat <- read_csv("processed_data/s1_data_cleaned.csv") |>
+  mutate(across(c(id, completed, condition, d_attention, gender), as.factor)) |>
+  filter(d_attention == "Pass", completed == 1)
+```
+
+# Analysis
+
+## Correlation matrices
+
+Zero-order correlation between key variables in each condition:
+
+::: {.panel-tabset}
+
+### Baseline
+
+```{r correlation-matrix-baseline}
+apa.cor.table(
+  data = dat |>
+    filter(condition == "baseline") |>
+    select(match, ee, pn, ne, d_score)
+)
+```
+
+### CP
+
+```{r correlation-matrix-cp}
+apa.cor.table(
+  data = dat |>
+    filter(condition == "cp") |>
+    select(match, ee, pn, ne, d_score)
+)
+```
+
+### Norm
+
+```{r correlation-matrix-norm}
+apa.cor.table(
+  data = dat |>
+    filter(condition == "norm") |>
+    select(match, ee, pn, ne, d_score)
+)
+```
+
+:::
+
+## Conditional norms
+
+```{r conditional-norms-data}
+dat_l_reg <- dat |>
+  select(id, condition, cee_1:cne_5) |>
+  pivot_longer( # 15 observations per participant
+    cols = cee_1:cne_5,
+    names_to = c("measure", "m_level"),
+    names_pattern = "(.*)_(.*)",
+    values_to = "value"
+  ) |>
+  pivot_wider( # 5 observations per participant
+    names_from = "measure",
+    values_from = "value"
+  ) |>
+  mutate(
+    m_level = as.numeric(m_level),
+    m_level.c = m_level - 3 # Centre to the middle value
+  )
+```
+
+::: {.panel-tabset}
+
+### Empirical expectations
+
+::: {.panel-tabset}
+
+#### Linear mixed-effects model
+
+```{r lme-conditional-empirical-expectations}
+mod_cee <- lmer(
+  cee ~ condition * m_level.c + (1 + m_level.c | id),
+  data = dat_l_reg
+)
+model_parameters(mod_cee)
+
+me_cee <- avg_slopes(
+  model = mod_cee,
+  variables = "m_level.c",
+  by = "condition",
+  re.form = NA
+)
+me_cee
+hypotheses(model = me_cee, hypothesis = ~ pairwise, multcomp = "bonferroni")
+```
+
+#### ANOVA at low match prevalence
+
+```{r anova-conditional-empirical-expectations-low-match-prevalence}
+#| message: false
+dat_l_reg_cee_l <- dat_l_reg |> filter(m_level == 1)
+mod_anova_cee_l <- aov_car(cee ~ condition + Error(id), data = dat_l_reg_cee_l)
+nice(mod_anova_cee_l, es = "pes")
+effectsize::eta_squared(mod_anova_cee_l, ci = 0.9, alternative = "two.sided")
+
+emm_anova_cee_l <- emmeans(mod_anova_cee_l, ~ condition)
+emm_anova_cee_l |>
+  kable(digits = 2) |>
+  kable_minimal(full_width = FALSE)
+pairs(emm_anova_cee_l, adjust = "tukey")
+
+# Cohen's d: CP - Norm (not model-based effect size)
+effectsize::cohens_d(
+  cee ~ condition,
+  data = dat_l_reg_cee_l[dat_l_reg_cee_l$condition != "baseline", ]
+)
+# Cohen's d: Baseline - Norm (not model-based effect size)
+effectsize::cohens_d(
+  cee ~ condition,
+  data = dat_l_reg_cee_l[dat_l_reg_cee_l$condition != "cp", ]
+)
+# Cohen's d: Baseline - CP (not model-based effect size)
+effectsize::cohens_d(
+  cee ~ condition,
+  data = dat_l_reg_cee_l[dat_l_reg_cee_l$condition != "norm", ]
+)
+```
+
+#### ANOVA at high match prevalence
+
+```{r anova-conditional-empirical-expectations-high-match-prevalence}
+#| message: false
+dat_l_reg_cee_h <- dat_l_reg |> filter(m_level == 5)
+mod_anova_cee_h <- aov_car(cee ~ condition + Error(id), data = dat_l_reg_cee_h)
+nice(mod_anova_cee_h, es = "pes")
+effectsize::eta_squared(mod_anova_cee_h, ci = 0.9, alternative = "two.sided")
+
+emm_anova_cee_h <- emmeans(mod_anova_cee_h, ~ condition)
+emm_anova_cee_h |>
+  kable(digits = 2) |>
+  kable_minimal(full_width = FALSE)
+pairs(emm_anova_cee_h, adjust = "tukey")
+
+# Cohen's d: CP - Norm (not model-based effect size)
+effectsize::cohens_d(
+  cee ~ condition,
+  data = dat_l_reg_cee_h[dat_l_reg_cee_h$condition != "baseline", ]
+)
+# Cohen's d: Baseline - Norm (not model-based effect size)
+effectsize::cohens_d(
+  cee ~ condition,
+  data = dat_l_reg_cee_h[dat_l_reg_cee_h$condition != "cp", ]
+)
+# Cohen's d: Baseline - CP (not model-based effect size)
+effectsize::cohens_d(
+  cee ~ condition,
+  data = dat_l_reg_cee_h[dat_l_reg_cee_h$condition != "norm", ]
+)
+```
+
+:::
+
+### Personal normative beliefs
+
+::: {.panel-tabset}
+
+#### Linear mixed-effects model
+
+```{r lme-conditional-personal-normative-beliefs}
+mod_cpn <- lmer(
+  cpn ~ condition * m_level.c + (1 + m_level.c | id),
+  data = dat_l_reg
+)
+model_parameters(mod_cpn)
+
+me_cpn <- avg_slopes(
+  model = mod_cpn,
+  variables = "m_level.c",
+  by = "condition",
+  re.form = NA
+)
+me_cpn
+hypotheses(model = me_cpn, hypothesis = ~ pairwise, multcomp = "bonferroni")
+```
+
+#### ANOVA at low match prevalence
+
+```{r anova-conditional-personal-normative-beliefs-low-match-prevalence}
+#| message: false
+dat_l_reg_cpn_l <- dat_l_reg |> filter(m_level == 1)
+mod_anova_cpn_l <- aov_car(cpn ~ condition + Error(id), data = dat_l_reg_cpn_l)
+nice(mod_anova_cpn_l, es = "pes")
+effectsize::eta_squared(mod_anova_cpn_l, ci = 0.9, alternative = "two.sided")
+
+emm_anova_cpn_l <- emmeans(mod_anova_cpn_l, ~ condition)
+emm_anova_cpn_l |>
+  kable(digits = 2) |>
+  kable_minimal(full_width = FALSE)
+pairs(emm_anova_cpn_l, adjust = "tukey")
+
+# Cohen's d: CP - Norm (not model-based effect size)
+effectsize::cohens_d(
+  cpn ~ condition,
+  data = dat_l_reg_cpn_l[dat_l_reg_cpn_l$condition != "baseline", ]
+)
+# Cohen's d: Baseline - Norm (not model-based effect size)
+effectsize::cohens_d(
+  cpn ~ condition,
+  data = dat_l_reg_cpn_l[dat_l_reg_cpn_l$condition != "cp", ]
+)
+# Cohen's d: Baseline - CP (not model-based effect size)
+effectsize::cohens_d(
+  cpn ~ condition,
+  data = dat_l_reg_cpn_l[dat_l_reg_cpn_l$condition != "norm", ]
+)
+```
+
+#### ANOVA at high match prevalence
+
+```{r anova-conditional-personal-normative-beliefs-high-match-prevalence}
+#| message: false
+dat_l_reg_cpn_h <- dat_l_reg |> filter(m_level == 5)
+mod_anova_cpn_h <- aov_car(cpn ~ condition + Error(id), data = dat_l_reg_cpn_h)
+nice(mod_anova_cpn_h, es = "pes")
+effectsize::eta_squared(mod_anova_cpn_h, ci = 0.9, alternative = "two.sided")
+
+emm_anova_cpn_h <- emmeans(mod_anova_cpn_h, ~ condition)
+emm_anova_cpn_h |>
+  kable(digits = 2) |>
+  kable_minimal(full_width = FALSE)
+pairs(emm_anova_cpn_h, adjust = "tukey")
+
+# Cohen's d: CP - Norm (not model-based effect size)
+effectsize::cohens_d(
+  cpn ~ condition,
+  data = dat_l_reg_cpn_h[dat_l_reg_cpn_h$condition != "baseline", ]
+)
+# Cohen's d: Baseline - Norm (not model-based effect size)
+effectsize::cohens_d(
+  cpn ~ condition,
+  data = dat_l_reg_cpn_h[dat_l_reg_cpn_h$condition != "cp", ]
+)
+# Cohen's d: Baseline - CP (not model-based effect size)
+effectsize::cohens_d(
+  cpn ~ condition,
+  data = dat_l_reg_cpn_h[dat_l_reg_cpn_h$condition != "norm", ]
+)
+```
+
+:::
+
+### Normative expectations
+
+::: {.panel-tabset}
+
+#### Linear mixed-effects model
+
+```{r lme-conditional-normative-expectations}
+mod_cne <- lmer(
+  cne ~ condition * m_level.c + (1 + m_level.c | id),
+  data = dat_l_reg
+)
+model_parameters(mod_cne)
+
+me_cne <- avg_slopes(
+  model = mod_cne,
+  variables = "m_level.c",
+  by = "condition",
+  re.form = NA
+)
+me_cne
+hypotheses(model = me_cne, hypothesis = ~ pairwise, multcomp = "bonferroni")
+```
+
+#### ANOVA at low match prevalence
+
+```{r anova-conditional-normative-expectations-low-match-prevalence}
+#| message: false
+dat_l_reg_cne_l <- dat_l_reg |> filter(m_level == 1)
+mod_anova_cne_l <- aov_car(cne ~ condition + Error(id), data = dat_l_reg_cne_l)
+nice(mod_anova_cne_l, es = "pes")
+effectsize::eta_squared(mod_anova_cne_l, ci = 0.9, alternative = "two.sided")
+
+emm_anova_cne_l <- emmeans(mod_anova_cne_l, ~ condition)
+emm_anova_cne_l |>
+  kable(digits = 2) |>
+  kable_minimal(full_width = FALSE)
+pairs(emm_anova_cne_l, adjust = "tukey")
+
+# Cohen's d: CP - Norm (not model-based effect size)
+effectsize::cohens_d(
+  cne ~ condition,
+  data = dat_l_reg_cne_l[dat_l_reg_cne_l$condition != "baseline", ]
+)
+# Cohen's d: Baseline - Norm (not model-based effect size)
+effectsize::cohens_d(
+  cne ~ condition,
+  data = dat_l_reg_cne_l[dat_l_reg_cne_l$condition != "cp", ]
+)
+# Cohen's d: Baseline - CP (not model-based effect size)
+effectsize::cohens_d(
+  cne ~ condition,
+  data = dat_l_reg_cne_l[dat_l_reg_cne_l$condition != "norm", ]
+)
+```
+
+#### ANOVA at high match prevalence
+
+```{r anova-conditional-normative-expectations-high-match-prevalence}
+#| message: false
+dat_l_reg_cne_h <- dat_l_reg |> filter(m_level == 5)
+mod_anova_cne_h <- aov_car(cne ~ condition + Error(id), data = dat_l_reg_cne_h)
+nice(mod_anova_cne_h, es = "pes")
+effectsize::eta_squared(mod_anova_cne_h, ci = 0.9, alternative = "two.sided")
+
+emm_anova_cne_h <- emmeans(mod_anova_cne_h, ~ condition)
+emm_anova_cne_h |>
+  kable(digits = 2) |>
+  kable_minimal(full_width = FALSE)
+pairs(emm_anova_cne_h, adjust = "tukey")
+
+# Cohen's d: CP - Norm (not model-based effect size)
+effectsize::cohens_d(
+  cne ~ condition,
+  data = dat_l_reg_cne_h[dat_l_reg_cne_h$condition != "baseline", ]
+)
+# Cohen's d: Baseline - Norm (not model-based effect size)
+effectsize::cohens_d(
+  cne ~ condition,
+  data = dat_l_reg_cne_h[dat_l_reg_cne_h$condition != "cp", ]
+)
+# Cohen's d: Baseline - CP (not model-based effect size)
+effectsize::cohens_d(
+  cne ~ condition,
+  data = dat_l_reg_cne_h[dat_l_reg_cne_h$condition != "norm", ]
+)
+```
+
+:::
+
+:::
+
+## Dishonesty and D-factor
+
+```{r d-internal-consistency-and-descriptives}
+d_items <- paste0("d_", 1:16)
+MBESS::ci.reliability(data = dat[d_items], type = "alpha")$est
+MBESS::ci.reliability(data = dat[d_items], type = "omega")$est
+
+# D16 descriptives
+mean(dat$d_score)
+sd(dat$d_score)
+```
+
+```{r logistic-regression-d-score}
+dat_d_reg <- dat |>
+  select(match, condition, d_score) |>
+  mutate(d_score_z = as.vector(scale(d_score)))
+
+mod_d_reg <- RRlog(
+  match ~ condition * d_score_z,
+  data = dat_d_reg,
+  model = "FR",
+  p = c(0, 0.2)
+)
+summary(mod_d_reg)
+
+mod_d_reg_coef <- RRlog(
+  match ~ 0 + condition + condition:d_score_z,
+  data = dat_d_reg,
+  model = "FR",
+  p = c(0, 0.2)
+)
+summary(mod_d_reg_coef)
+```
+
+## Preregistered analyses
+
+Here we report preregistered analyses that are not reported in the main text.
+
+::: {.panel-tabset}
+
+### H8
+
+```{r H8}
+#| message: false
+mod_anova_cee_20_30 <- aov_car(
+  cee ~ condition + Error(id),
+  data = dat_l_reg |> filter(m_level == 3)
+)
+nice(mod_anova_cee_20_30, es = "pes")
+effectsize::eta_squared(
+  mod_anova_cee_20_30,
+  ci = 0.9,
+  alternative = "two.sided"
+)
+
+emm_anova_cee_20_30 <- emmeans(mod_anova_cee_20_30, ~ condition)
+emm_anova_cee_20_30 |>
+  kable(digits = 2) |>
+  kable_minimal(full_width = FALSE)
+
+# Test H8
+contrast(emm_anova_cee_20_30, method = list(baseline_vs_cp = c(1, -1, 0)))
+effectsize::cohens_d(
+  x = dat_l_reg |> filter(m_level == 3, condition == "baseline") |> pull(cee),
+  y = dat_l_reg |> filter(m_level == 3, condition == "cp") |> pull(cee)
+)
+```
+
+### H9
+
+```{r H9}
+#| message: false
+mod_anova_cee_30_50 <- aov_car(
+  cee ~ condition * m_level + Error(id/m_level),
+  data = dat_l_reg |>
+    filter(m_level > 3) |>
+    mutate(m_level = droplevels(as.factor(m_level)))
+)
+nice(mod_anova_cee_30_50, es = "pes")
+effectsize::eta_squared(
+  mod_anova_cee_30_50,
+  ci = 0.9,
+  alternative = "two.sided",
+  partial = TRUE
+)
+
+emm_anova_cee_30_50 <- emmeans(mod_anova_cee_30_50, ~ condition)
+emm_anova_cee_30_50 |>
+  kable(digits = 2) |>
+  kable_minimal(full_width = FALSE)
+
+# Test H9
+contrast(emm_anova_cee_30_50, method = list(baseline_vs_cp = c(1, -1, 0)))
+effectsize::cohens_d(
+  x = dat_l_reg |> filter(m_level == 4, condition == "baseline") |> pull(cee),
+  y = dat_l_reg |> filter(m_level == 4, condition == "cp") |> pull(cee)
+)
+effectsize::cohens_d(
+  x = dat_l_reg |> filter(m_level == 5, condition == "baseline") |> pull(cee),
+  y = dat_l_reg |> filter(m_level == 5, condition == "cp") |> pull(cee)
+)
+```
+
+### H10
+
+```{r H10}
+#| message: false
+mod_anova_cpn_20_30 <- aov_car(
+  cpn ~ condition + Error(id),
+  data = dat_l_reg |> filter(m_level == 3)
+)
+nice(mod_anova_cpn_20_30, es = "pes")
+effectsize::eta_squared(
+  mod_anova_cpn_20_30,
+  ci = 0.9,
+  alternative = "two.sided"
+)
+
+emm_anova_cpn_20_30 <- emmeans(mod_anova_cpn_20_30, ~ condition)
+emm_anova_cpn_20_30 |>
+  kable(digits = 2) |>
+  kable_minimal(full_width = FALSE)
+
+# Test H10
+contrast(emm_anova_cpn_20_30, method = list(baseline_vs_cp = c(1, -1, 0)))
+effectsize::cohens_d(
+  x = dat_l_reg |> filter(m_level == 3, condition == "baseline") |> pull(cpn),
+  y = dat_l_reg |> filter(m_level == 3, condition == "cp") |> pull(cpn)
+)
+```
+
+### H11
+
+```{r H11}
+#| message: false
+mod_anova_cpn_30_50 <- aov_car(
+  cpn ~ condition * m_level + Error(id/m_level),
+  data = dat_l_reg |>
+    filter(m_level > 3) |>
+    mutate(m_level = droplevels(as.factor(m_level)))
+)
+nice(mod_anova_cpn_30_50, es = "pes")
+effectsize::eta_squared(
+  mod_anova_cpn_30_50,
+  ci = 0.9,
+  alternative = "two.sided",
+  partial = TRUE
+)
+
+emm_anova_cpn_30_50 <- emmeans(mod_anova_cpn_30_50, ~ condition)
+emm_anova_cpn_30_50 |>
+  kable(digits = 2) |>
+  kable_minimal(full_width = FALSE)
+
+# Test H11
+contrast(emm_anova_cpn_30_50, method = list(baseline_vs_cp = c(1, -1, 0)))
+effectsize::cohens_d(
+  x = dat_l_reg |> filter(m_level == 4, condition == "baseline") |> pull(cpn),
+  y = dat_l_reg |> filter(m_level == 4, condition == "cp") |> pull(cpn)
+)
+effectsize::cohens_d(
+  x = dat_l_reg |> filter(m_level == 5, condition == "baseline") |> pull(cpn),
+  y = dat_l_reg |> filter(m_level == 5, condition == "cp") |> pull(cpn)
+)
+```
+
+### H12
+
+```{r H12}
+#| message: false
+mod_anova_cne_20_30 <- aov_car(
+  cne ~ condition + Error(id),
+  data = dat_l_reg |> filter(m_level == 3)
+)
+nice(mod_anova_cne_20_30, es = "pes")
+effectsize::eta_squared(mod_anova_cne_20_30, ci = 0.9, alternative = "two.sided")
+
+emm_anova_cne_20_30 <- emmeans(mod_anova_cne_20_30, ~ condition)
+emm_anova_cne_20_30 |>
+  kable(digits = 2) |>
+  kable_minimal(full_width = FALSE)
+
+# Test H12
+contrast(emm_anova_cne_20_30, method = list(baseline_vs_cp = c(1, -1, 0)))
+effectsize::cohens_d(
+  x = dat_l_reg |> filter(m_level == 3, condition == "baseline") |> pull(cne),
+  y = dat_l_reg |> filter(m_level == 3, condition == "cp") |> pull(cne)
+)
+```
+
+### H13
+
+```{r H13}
+#| message: false
+mod_anova_cne_30_50 <- aov_car(
+  cne ~ condition * m_level + Error(id/m_level),
+  data = dat_l_reg |>
+    filter(m_level > 3) |>
+    mutate(m_level = droplevels(as.factor(m_level)))
+)
+nice(mod_anova_cne_30_50, es = "pes")
+effectsize::eta_squared(
+  mod_anova_cne_30_50,
+  ci = 0.9,
+  alternative = "two.sided",
+  partial = TRUE
+)
+
+emm_anova_cne_30_50 <- emmeans(mod_anova_cne_30_50, ~ condition)
+emm_anova_cne_30_50 |>
+  kable(digits = 2) |>
+  kable_minimal(full_width = FALSE)
+
+# Test H13
+contrast(emm_anova_cne_30_50, method = list(baseline_vs_cp = c(1, -1, 0)))
+effectsize::cohens_d(
+  x = dat_l_reg |> filter(m_level == 4, condition == "baseline") |> pull(cne),
+  y = dat_l_reg |> filter(m_level == 4, condition == "cp") |> pull(cne)
+)
+effectsize::cohens_d(
+  x = dat_l_reg |> filter(m_level == 5, condition == "baseline") |> pull(cne),
+  y = dat_l_reg |> filter(m_level == 5, condition == "cp") |> pull(cne)
+)
+```

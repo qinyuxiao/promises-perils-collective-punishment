@@ -1,0 +1,242 @@
+---
+title: "Power analysis"
+author: "Qinyu Xiao"
+format:
+  html:
+    theme: cosmo
+    embed-resources: true
+    code-tools: true
+    code-fold: show
+    toc: true
+    toc-title: "Table of contents"
+    grid: 
+      body-width: 900px
+---
+
+Here we conduct power simulations for the registered experiment.
+
+## Preparation
+
+### Packages
+
+```{r}
+#| warning: false
+#| message: false
+
+# Packages
+library(MPTinR)
+library(tidyverse)
+```
+
+### MPT model specification
+
+```{r}
+mpt_model <- "
+# Baseline tree
+d1+(1-d1)*p
+(1-d1)*(1-p)
+# CP tree
+d2+(1-d2)*p
+(1-d2)*(1-p)
+"
+```
+
+## Simulation-based power analysis
+
+### Parameters
+
+```{r}
+d_1 <- 0.397  # Baseline d
+d_2 <- 0.316  # CP d
+p_match <- 0.2  # Probability of actually obtaining a match
+iterations <- 5000
+min_n <- 700
+max_n <- 1500
+n_step <- 50
+
+baseline_constraint <- list("p = 0.2")
+restricted_constraint <- list("p = 0.2", "d1 = d2")
+```
+
+### Simulation
+
+```{r}
+ns <- seq(from = min_n, to = max_n, by = n_step)
+powers <- c()
+
+set.seed(2026)
+
+for (n in ns) {
+  sig_results <- c()
+  
+  for (i in 1:iterations) {
+    
+    # Generate random data
+    dat <- gen.data(
+      parameter.values = c(d1 = d_1, d2 = d_2, p = p_match),
+      samples = 1,
+      model.filename = textConnection(mpt_model),
+      n.per.item.type = c(n, n)
+    )
+    dat <- as.vector(dat)
+    
+    # Fit saturated model
+    mod_baseline <- fit.model(
+      data = dat,
+      model.filename = textConnection(mpt_model),
+      restrictions.filename = baseline_constraint,
+      output = "full",
+      show.messages = FALSE
+    )
+    
+    # Fit model with constraint d1 = d2
+    mod_restricted <- fit.model(
+      data = dat,
+      model.filename = textConnection(mpt_model),
+      restrictions.filename = restricted_constraint,
+      output = "full",
+      show.messages = FALSE
+    )
+    
+    # Model comparison, retrieve p-value
+    mod_comp <- select.mpt(list(mod_baseline, mod_restricted), output = "full")
+    p_value <- mod_comp$p[2]
+    sig_results[i] <- (p_value < .05)
+  }
+  
+  # Compute power at sample size n
+  powers[match(n, ns)] <- mean(sig_results)
+}
+```
+
+### Simulation results
+
+```{r}
+as.data.frame(cbind(ns, powers)) %>% print(max_n = length(ns))
+```
+
+```{r}
+#| warning: false
+#| message: false
+#| code-fold: true
+#| code-summary: "Show the code"
+ggplot(as.data.frame(cbind(ns, powers)), aes(x = ns, y = powers)) +
+  geom_point() +
+  geom_smooth(se = FALSE, method = "loess") +
+  labs(
+    title = "Simulation results",
+    subtitle = "Based on observed parameter values from the pilot study",
+    x = "Sample size per condition",
+    y = "Statistical power"
+  ) +
+  scale_x_continuous(breaks = seq(min_n, max_n, by = 50)) +
+  scale_y_continuous(breaks = seq(0.6, 1, by = 0.05)) +
+  geom_hline(yintercept = 0.80, linetype = "dashed", color = "red") +
+  theme_minimal() +
+  theme(
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor.x = element_blank()
+  )
+```
+
+## Simulation-based sensitivity analysis
+
+### Parameters
+
+```{r}
+d_1 <- 0.397  # Baseline d
+d_2_min <- 0.27
+d_2_max <- 0.33
+d_step <- 0.005
+iterations <- 5000
+p_match <- 0.2  # Probability of actually obtaining a match
+n_per_condition <- 1000
+
+baseline_constraint <- list("p = 0.2")
+restricted_constraint <- list("p = 0.2", "d1 = d2")
+```
+
+### Simulation
+
+```{r}
+d_2s <- seq(from = d_2_min, to = d_2_max, by = d_step)
+powers <- c()
+
+set.seed(2026)
+
+for (d_2 in d_2s) {
+  sig_results <- c()
+  
+  for (i in 1:iterations) {
+    
+    # Generate random data
+    dat <- gen.data(
+      parameter.values = c(d1 = d_1, d2 = d_2, p = p_match),
+      samples = 1,
+      model.filename = textConnection(mpt_model),
+      n.per.item.type = c(n_per_condition, n_per_condition)
+    )
+    dat <- as.vector(dat)
+    
+    # Fit saturated model
+    mod_baseline <- fit.model(
+      data = dat,
+      model.filename = textConnection(mpt_model),
+      restrictions.filename = baseline_constraint,
+      output = "full",
+      show.messages = FALSE
+    )
+    
+    # Fit model with constraint d1 = d2
+    mod_restricted <- fit.model(
+      data = dat,
+      model.filename = textConnection(mpt_model),
+      restrictions.filename = restricted_constraint,
+      output = "full",
+      show.messages = FALSE
+    )
+    
+    # Model comparison, retrieve p-value
+    mod_comp <- select.mpt(list(mod_baseline, mod_restricted), output = "full")
+    p_value <- mod_comp$p[2]
+    sig_results[i] <- (p_value < .05)
+  }
+  
+  # Compute power at sample size n
+  powers[match(d_2, d_2s)] <- mean(sig_results)
+}
+```
+
+### Simulation results
+
+```{r}
+as.data.frame(cbind(d_2s, powers)) %>% print(max_n = length(d_2s))
+```
+
+```{r}
+#| warning: false
+#| message: false
+#| code-fold: true
+#| code-summary: "Show the code"
+ggplot(as.data.frame(cbind(d_2s, powers)), aes(x = d_2s, y = powers)) +
+  geom_point() +
+  geom_smooth(se = FALSE, method = "loess") +
+  labs(
+    title = "Simulation results",
+    subtitle = expression(paste(
+      "Based on ",
+      italic("n"),
+      " = 1,000 per condition and the observed d = .397 in Baseline"
+    )),
+    x = "True d in CP",
+    y = "Statistical power"
+  ) +
+  scale_x_continuous(breaks = seq(d_2_min, d_2_max, by = 0.01)) +
+  scale_y_continuous(breaks = seq(0.4, 1, by = 0.05)) +
+  geom_hline(yintercept = 0.80, linetype = "dashed", color = "red") +
+  theme_minimal() +
+  theme(
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor.x = element_blank()
+  )
+```
